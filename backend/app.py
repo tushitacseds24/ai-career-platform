@@ -101,8 +101,7 @@ def root():
 # ANALYZE ENDPOINT
 # -----------------------------
 
-@app.post("/analyze")
-@app.post("/analyze")
+@app.post("/analyze-job-seeker")
 def analyze_skills(data: SkillRequest):
 
     # -----------------------------
@@ -222,4 +221,38 @@ def analyze_skills(data: SkillRequest):
         "ai_semantic_match_score": round(ai_match_score, 2),
         "final_ai_readiness_score": round(final_score, 2),
         "recommended_courses": recommended_courses
+    }
+
+@app.post("/analyze-upskiller")
+def analyze_upskiller(data: SkillRequest):
+
+    # Reuse the same logic for now
+    result = analyze_skills(data)
+
+    # Slight adjustment: boost AI weight for professionals
+    if "final_ai_readiness_score" in result:
+        boosted_score = result["final_ai_readiness_score"] * 1.05
+        result["final_ai_readiness_score"] = round(min(boosted_score, 100), 2)
+
+    result["mode"] = "Upskiller"
+
+    return result
+
+@app.post("/explore")
+def explore_career(data: SkillRequest):
+
+    suggestions = []
+
+    for role, skills in ROLES.items():
+        match_count = len([skill for skill in skills if skill in data.user_skills])
+        suggestions.append({
+            "role": role,
+            "match_score": round((match_count / len(skills)) * 100, 2)
+        })
+
+    suggestions = sorted(suggestions, key=lambda x: x["match_score"], reverse=True)
+
+    return {
+        "mode": "Explorer",
+        "career_suggestions": suggestions
     }
