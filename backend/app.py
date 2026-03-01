@@ -102,9 +102,12 @@ def root():
 # -----------------------------
 
 @app.post("/analyze")
+@app.post("/analyze")
 def analyze_skills(data: SkillRequest):
 
-    # Check if role exists
+    # -----------------------------
+    # CHECK ROLE EXISTS
+    # -----------------------------
     if data.target_role not in ROLES:
         return {"error": "Role not found"}
 
@@ -127,7 +130,6 @@ def analyze_skills(data: SkillRequest):
             if skill.lower() in data.resume_text.lower():
                 extracted_skills.append(skill)
 
-        # Remove duplicates
         extracted_skills = list(set(extracted_skills))
 
         # Merge with manual skills
@@ -149,7 +151,7 @@ def analyze_skills(data: SkillRequest):
     ]
 
     # -----------------------------
-    # READINESS SCORE
+    # RULE-BASED READINESS SCORE
     # -----------------------------
     total_required = len(required_skills)
     matched_count = len(matched_skills)
@@ -162,14 +164,30 @@ def analyze_skills(data: SkillRequest):
 
     if data.resume_text and data.target_role in ROLE_DESCRIPTIONS:
 
-        resume_embedding = embedding_model.encode(data.resume_text, convert_to_tensor=True)
-        role_embedding = embedding_model.encode(ROLE_DESCRIPTIONS[data.target_role], convert_to_tensor=True)
+        resume_embedding = embedding_model.encode(
+            data.resume_text,
+            convert_to_tensor=True
+        )
 
-        similarity = util.pytorch_cos_sim(resume_embedding, role_embedding)
+        role_embedding = embedding_model.encode(
+            ROLE_DESCRIPTIONS[data.target_role],
+            convert_to_tensor=True
+        )
+
+        similarity = util.pytorch_cos_sim(
+            resume_embedding,
+            role_embedding
+        )
 
         ai_match_score = float(similarity[0][0]) * 100
+
     # -----------------------------
-    # COURSE RECOMMENDATION (OPTIMAL)
+    # HYBRID FINAL SCORE
+    # -----------------------------
+    final_score = (readiness_score * 0.6) + (ai_match_score * 0.4)
+
+    # -----------------------------
+    # COURSE RECOMMENDATION
     # -----------------------------
     recommended_courses = {}
 
@@ -193,7 +211,7 @@ def analyze_skills(data: SkillRequest):
             recommended_courses[skill] = "No course found"
 
     # -----------------------------
-    # RETURN RESPONSE
+    # RESPONSE
     # -----------------------------
     return {
         "target_role": data.target_role,
@@ -202,5 +220,6 @@ def analyze_skills(data: SkillRequest):
         "missing_skills": missing_skills,
         "rule_based_readiness_score": round(readiness_score, 2),
         "ai_semantic_match_score": round(ai_match_score, 2),
+        "final_ai_readiness_score": round(final_score, 2),
         "recommended_courses": recommended_courses
     }
