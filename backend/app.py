@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List
 from sentence_transformers import SentenceTransformer, util
+from database import SessionLocal, Analysis, User
 
 # Load NLP model
 nlp = spacy.load("en_core_web_sm")
@@ -85,6 +86,7 @@ ALL_SKILLS = [
 # -----------------------------
 
 class SkillRequest(BaseModel):
+    user_name: str
     user_skills: List[str] = []
     resume_text: str = ""
     target_role: str
@@ -210,6 +212,31 @@ def analyze_skills(data: SkillRequest):
             recommended_courses[skill] = "No course found"
 
     # -----------------------------
+    # SAVE TO DATABASE
+    # -----------------------------
+        db = SessionLocal()
+
+    # Check if user exists
+    user = db.query(User).filter(User.name == data.user_name).first()
+
+    if not user:
+        user = User(name=data.user_name)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    new_analysis = Analysis(
+        user_id=user.id,
+        target_role=data.target_role,
+        rule_score=readiness_score,
+        ai_score=ai_match_score,
+        final_score=final_score
+    )
+
+    db.add(new_analysis)
+    db.commit()
+    db.close()
+    # -----------------------------
     # RESPONSE
     # -----------------------------
     return {
@@ -256,3 +283,30 @@ def explore_career(data: SkillRequest):
         "mode": "Explorer",
         "career_suggestions": suggestions
     }
+
+@app.get("/history/{user_name}")
+def get_user_history(user_name: str):
+
+    db = SessionLocal()
+
+    user = db.query(User).filter(User.name == user_name).first()
+
+    if not user:
+        db.close()
+        return {"error": "User not found"}
+
+    records = db.query(Analysis).filter(Analysis.user_id == user.id).all()
+
+    db.close()
+
+    return [
+        {
+            "id": record.id,
+            "target_role": record.target_role,
+            "rule_score": record.rule_score,
+            "ai_score": record.ai_score,
+            "final_score": record.final_score,
+            "created_at": record.created_at
+        }
+        for record in records
+    ]
