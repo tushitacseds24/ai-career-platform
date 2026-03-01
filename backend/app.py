@@ -2,9 +2,12 @@ import spacy
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List
+from sentence_transformers import SentenceTransformer, util
 
 # Load NLP model
 nlp = spacy.load("en_core_web_sm")
+
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 app = FastAPI()
 
@@ -16,6 +19,11 @@ ROLES = {
     "Data Scientist": ["Python", "SQL", "Machine Learning", "Statistics"],
     "Web Developer": ["HTML", "CSS", "JavaScript", "React"],
     "ML Engineer": ["Python", "Machine Learning", "Deep Learning", "TensorFlow"]
+}
+ROLE_DESCRIPTIONS = {
+    "Data Scientist": "Work with data, machine learning models, statistics, SQL databases, and Python programming.",
+    "Web Developer": "Build websites using HTML, CSS, JavaScript and modern frontend frameworks like React.",
+    "ML Engineer": "Develop machine learning systems using Python, deep learning, TensorFlow and scalable AI pipelines."
 }
 
 # -----------------------------
@@ -148,6 +156,19 @@ def analyze_skills(data: SkillRequest):
     readiness_score = (matched_count / total_required) * 100
 
     # -----------------------------
+    # AI SEMANTIC MATCH SCORE
+    # -----------------------------
+    ai_match_score = 0
+
+    if data.resume_text and data.target_role in ROLE_DESCRIPTIONS:
+
+        resume_embedding = embedding_model.encode(data.resume_text, convert_to_tensor=True)
+        role_embedding = embedding_model.encode(ROLE_DESCRIPTIONS[data.target_role], convert_to_tensor=True)
+
+        similarity = util.pytorch_cos_sim(resume_embedding, role_embedding)
+
+        ai_match_score = float(similarity[0][0]) * 100
+    # -----------------------------
     # COURSE RECOMMENDATION (OPTIMAL)
     # -----------------------------
     recommended_courses = {}
@@ -179,6 +200,7 @@ def analyze_skills(data: SkillRequest):
         "extracted_user_skills": data.user_skills,
         "matched_skills": matched_skills,
         "missing_skills": missing_skills,
-        "readiness_score": round(readiness_score, 2),
+        "rule_based_readiness_score": round(readiness_score, 2),
+        "ai_semantic_match_score": round(ai_match_score, 2),
         "recommended_courses": recommended_courses
     }
